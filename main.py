@@ -5,15 +5,19 @@ from deep_translator import GoogleTranslator
 import re
 from datetime import datetime
 
-# Function to scrape articles from the archive pages
+# Function to scrape articles from the archive pages with headers to simulate browser requests
 def scrape_articles():
     base_url = "https://www.gujaratsamachar.com/archives"
     articles = []
     
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
     # Loop through the first few pages of the archive (you can increase this range for more pages)
     for page_num in range(1, 6):  # Scraping first 5 pages (adjust as needed)
         url = f"{base_url}?page={page_num}"
-        response = requests.get(url)
+        response = requests.get(url, headers=headers)
         
         if response.status_code != 200:
             st.error(f"Failed to retrieve page {page_num}. Please check the website or your connection.")
