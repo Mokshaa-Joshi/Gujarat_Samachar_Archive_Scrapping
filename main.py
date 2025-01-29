@@ -5,35 +5,40 @@ from deep_translator import GoogleTranslator
 import re
 from datetime import datetime
 
-# Function to scrape articles from the main page
+# Function to scrape articles from the archive pages
 def scrape_articles():
-    base_url = "https://www.gujaratsamachar.com/"
-    response = requests.get(base_url)
-    
-    if response.status_code != 200:
-        st.error("Failed to retrieve the website. Please check the URL or your internet connection.")
-        return []
-
-    soup = BeautifulSoup(response.content, 'html.parser')
-    
+    base_url = "https://www.gujaratsamachar.com/archives"
     articles = []
-    for article in soup.find_all('div', class_='news-box'):
-        title = article.find('a', class_='theme-link news-title').text.strip()
-        link = article.find('a', class_='theme-link')['href']
-        summary = article.find('p').text.strip() if article.find('p') else ""
+    
+    # Loop through the first few pages of the archive (you can increase this range for more pages)
+    for page_num in range(1, 6):  # Scraping first 5 pages (adjust as needed)
+        url = f"{base_url}?page={page_num}"
+        response = requests.get(url)
         
-        if link.startswith('/'):
-            link = base_url + link
+        if response.status_code != 200:
+            st.error(f"Failed to retrieve page {page_num}. Please check the website or your connection.")
+            continue
         
-        content = scrape_article_content(link)
+        soup = BeautifulSoup(response.content, 'html.parser')
         
-        if title and link and content:
-            articles.append({
-                'title': title,
-                'link': link,
-                'summary': summary,
-                'content': content
-            })
+        # Extract articles from each page
+        for article in soup.find_all('div', class_='news-box'):
+            title = article.find('a', class_='theme-link news-title').text.strip()
+            link = article.find('a', class_='theme-link')['href']
+            summary = article.find('p').text.strip() if article.find('p') else ""
+            
+            if link.startswith('/'):
+                link = base_url + link
+            
+            content = scrape_article_content(link)
+            
+            if title and link and content:
+                articles.append({
+                    'title': title,
+                    'link': link,
+                    'summary': summary,
+                    'content': content
+                })
     
     return articles
 
@@ -84,7 +89,7 @@ def main():
     else:
         translated_query = ""
 
-    # Scrape the articles
+    # Scrape the articles from multiple archive pages
     articles = scrape_articles()
     if not articles:
         st.warning("No articles found. Please try again later.")
