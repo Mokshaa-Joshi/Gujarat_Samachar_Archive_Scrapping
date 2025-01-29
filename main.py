@@ -1,36 +1,25 @@
-import time
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+import requests
 from bs4 import BeautifulSoup
 import streamlit as st
 from deep_translator import GoogleTranslator
 import re
 from datetime import datetime
 
-# Function to scrape articles from the archive pages using Selenium
 def scrape_articles():
+    base_url = "https://www.gujaratsamachar.com/"
     articles = []
+    page_number = 1  # Start from the first page
     
-    # Setup the WebDriver (make sure you have the ChromeDriver installed)
-    options = webdriver.ChromeOptions()
-    options.add_argument('--headless')  # Run in headless mode (no browser window)
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    
-    base_url = "https://www.gujaratsamachar.com/archives"
-    
-    # Loop through the first few pages of the archive (you can increase this range for more pages)
-    for page_num in range(1, 6):  # Scraping first 5 pages (adjust as needed)
-        url = f"{base_url}?page={page_num}"
-        driver.get(url)
+    while True:
+        response = requests.get(f"{base_url}archive?page={page_number}")
         
-        time.sleep(2)  # Give time for the page to load
+        if response.status_code != 200:
+            st.error("Failed to retrieve the website. Please check the URL or your internet connection.")
+            break
+
+        soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Parse the page source using BeautifulSoup
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        
-        # Extract articles from each page
+        # Find all article containers
         for article in soup.find_all('div', class_='news-box'):
             title = article.find('a', class_='theme-link news-title').text.strip()
             link = article.find('a', class_='theme-link')['href']
@@ -48,18 +37,24 @@ def scrape_articles():
                     'summary': summary,
                     'content': content
                 })
+        
+        # Check if there is a next page; if not, stop
+        next_page = soup.find('a', class_='next')
+        if not next_page:
+            break
+        
+        # Move to the next page
+        page_number += 1
     
-    driver.quit()  # Close the WebDriver after scraping
     return articles
 
-# Function to scrape content from individual articles
 def scrape_article_content(link):
     try:
-        response = requests.get(link)
-        if response.status_code != 200:
+        article_response = requests.get(link)
+        if article_response.status_code != 200:
             return "Error loading article content."
         
-        article_soup = BeautifulSoup(response.content, 'html.parser')
+        article_soup = BeautifulSoup(article_response.content, 'html.parser')
         
         content_div = article_soup.find('div')
         if not content_div:
@@ -74,7 +69,6 @@ def scrape_article_content(link):
     except Exception as e:
         return f"Error: {e}"
 
-# Function to translate English query to Gujarati
 def translate_to_gujarati(query):
     try:
         translated_query = GoogleTranslator(source='en', target='gu').translate(query)
@@ -82,15 +76,13 @@ def translate_to_gujarati(query):
     except Exception as e:
         return f"Translation Error: {e}"
 
-# Function to search articles based on the query
 def search_articles(query, articles):
     return [article for article in articles if query.lower() in article['title'].lower() or query.lower() in article['summary'].lower()]
 
-# Streamlit main function
 def main():
     st.title("Gujarat Samachar Article Search")
-    st.write("Enter a keyword to search for relevant articles. You can also see the Gujarati translation of your query.")
-
+    st.write("Enter a keyword to search for relevant articles.")
+    
     query = st.text_input("Search for articles", "")
     
     if query:
@@ -99,19 +91,17 @@ def main():
     else:
         translated_query = ""
 
-    # Scrape the articles from multiple archive pages using Selenium
     articles = scrape_articles()
     if not articles:
         st.warning("No articles found. Please try again later.")
         return
     
-    # Search and filter articles based on the translated query (if available)
     if translated_query:
         filtered_articles = search_articles(translated_query, articles)
         if filtered_articles:
             st.subheader(f"Search Results for '{query}':")
-            today_date = datetime.now().strftime("%B %d, %Y")
             for article in filtered_articles:
+                today_date = datetime.now().strftime("%B %d, %Y")
                 st.markdown(f"### <a href='{article['link']}' target='_blank'>{article['title']}</a> - {today_date}", unsafe_allow_html=True)
                 st.write(article['summary'])
                 st.write(article['content'])
