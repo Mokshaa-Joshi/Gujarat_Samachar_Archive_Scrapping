@@ -1,61 +1,109 @@
 import requests
 from bs4 import BeautifulSoup
+import streamlit as st
+from deep_translator import GoogleTranslator
+import re
 from datetime import datetime
 
-# Function to scrape articles from a page
-def scrape_page(url):
-    response = requests.get(url)
+# Function to scrape articles from the main page
+def scrape_articles():
+    base_url = "https://www.gujaratsamachar.com/"
+    response = requests.get(base_url)
+    
+    if response.status_code != 200:
+        st.error("Failed to retrieve the website. Please check the URL or your internet connection.")
+        return []
+
     soup = BeautifulSoup(response.content, 'html.parser')
-
-    # Print the HTML to understand the structure (optional, for debugging)
-    # Uncomment the following line if you want to inspect the HTML structure
-    # print(soup.prettify())  # Uncomment to inspect HTML structure
-
-    # Assuming the articles are contained in <article> tags (adjust as necessary)
-    articles = soup.find_all('article')
-
-    scraped_articles = []
-    for article in articles:
-        title = article.find('h2')
-        content = article.find('div', class_='entry-summary')
-        link = article.find('a')
-
-        # Ensure valid content is extracted before processing
-        if title and content and link:
-            title = title.text.strip()
-            content = content.text.strip()
-            link = link['href']
-            date_str = article.find('time')['datetime']
-            pub_date = datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%S')
-
-            # Collect the article data
-            scraped_articles.append({
-                "title": title,
-                "content": content,
-                "link": link,
-                "date": pub_date
+    
+    articles = []
+    for article in soup.find_all('div', class_='news-box'):
+        title = article.find('a', class_='theme-link news-title').text.strip()
+        link = article.find('a', class_='theme-link')['href']
+        summary = article.find('p').text.strip() if article.find('p') else ""
+        
+        if link.startswith('/'):
+            link = base_url + link
+        
+        content = scrape_article_content(link)
+        
+        if title and link and content:
+            articles.append({
+                'title': title,
+                'link': link,
+                'summary': summary,
+                'content': content
             })
+    
+    return articles
 
-    return scraped_articles
+# Function to scrape content from individual articles
+def scrape_article_content(link):
+    try:
+        article_response = requests.get(link)
+        if article_response.status_code != 200:
+            return "Error loading article content."
+        
+        article_soup = BeautifulSoup(article_response.content, 'html.parser')
+        
+        content_div = article_soup.find('div')
+        if not content_div:
+            content_elements = article_soup.find_all(['p', 'h1', 'h2', 'h3', 'ul', 'ol'])
+            content = ' '.join([element.get_text().strip() for element in content_elements])
+        else:
+            content = content_div.text.strip() if content_div else "Content not available."
+        
+        content_in_gujarati = re.sub(r'[^\u0A80-\u0AFF\s]', '', content)
+        
+        return content_in_gujarati
+    except Exception as e:
+        return f"Error: {e}"
 
-# Function to scrape multiple pages
-def scrape_all_pages():
-    base_url = "https://www.gujaratsamachar.com/archives"
-    all_articles = []
-    for page in range(1, 6):  # Scrape the first 5 pages (adjust as needed)
-        url = f"{base_url}?page={page}"
-        articles = scrape_page(url)
-        all_articles.extend(articles)
+# Function to translate English query to Gujarati
+def translate_to_gujarati(query):
+    try:
+        translated_query = GoogleTranslator(source='en', target='gu').translate(query)
+        return translated_query
+    except Exception as e:
+        return f"Translation Error: {e}"
 
-    return all_articles
+# Function to search articles based on the query
+def search_articles(query, articles):
+    return [article for article in articles if query.lower() in article['title'].lower() or query.lower() in article['summary'].lower()]
+
+# Streamlit main function
+def main():
+    st.title("Gujarat Samachar Article Search")
+    st.write("Enter a keyword to search for relevant articles. You can also see the Gujarati translation of your query.")
+
+    query = st.text_input("Search for articles", "")
+    
+    if query:
+        translated_query = translate_to_gujarati(query)
+        st.write(f"Translated query (Gujarati): {translated_query}")
+    else:
+        translated_query = ""
+
+    # Scrape the articles
+    articles = scrape_articles()
+    if not articles:
+        st.warning("No articles found. Please try again later.")
+        return
+    
+    # Search and filter articles based on the translated query (if available)
+    if translated_query:
+        filtered_articles = search_articles(translated_query, articles)
+        if filtered_articles:
+            st.subheader(f"Search Results for '{query}':")
+            today_date = datetime.now().strftime("%B %d, %Y")
+            for article in filtered_articles:
+                st.markdown(f"### <a href='{article['link']}' target='_blank'>{article['title']}</a> - {today_date}", unsafe_allow_html=True)
+                st.write(article['summary'])
+                st.write(article['content'])
+        else:
+            st.warning(f"No articles found for '{query}'.")
+    else:
+        st.info("Please enter a search term.")
 
 if __name__ == "__main__":
-    articles = scrape_all_pages()
-    if articles:
-        for article in articles:
-            print(f"Title: {article['title']}")
-            print(f"Date: {article['date'].strftime('%B %d, %Y')}")
-            print(f"Link: {article['link']}")
-            print("---")
-    else:
-        print("No articles found.")
+    main()
