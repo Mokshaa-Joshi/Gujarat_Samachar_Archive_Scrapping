@@ -5,9 +5,17 @@ from deep_translator import GoogleTranslator
 import re
 from datetime import datetime
 
-def scrape_articles():
+def scrape_articles(date=None):
     base_url = "https://www.gujaratsamachar.com/"
-    response = requests.get(base_url)
+    
+    # If a date is provided, append it to the URL
+    if date:
+        date_str = date.strftime("%Y-%m-%d")
+        url = f"{base_url}archive/{date_str}"
+    else:
+        url = base_url
+    
+    response = requests.get(url)
     
     if response.status_code != 200:
         st.error("Failed to retrieve the website. Please check the URL or your internet connection.")
@@ -17,28 +25,12 @@ def scrape_articles():
     
     articles = []
     for article in soup.find_all('div', class_='news-box'):
-        title_element = article.find('a', class_='theme-link news-title')
-        date_element = article.find('div', class_='date')  # Update with correct class for date
-        
-        if not title_element:
-            continue
-        
-        title = title_element.text.strip()
-        link = title_element['href']
+        title = article.find('a', class_='theme-link news-title').text.strip()
+        link = article.find('a', class_='theme-link')['href']
         summary = article.find('p').text.strip() if article.find('p') else ""
         
         if link.startswith('/'):
             link = base_url + link
-        
-        # Extracting date (modify based on actual date format)
-        if date_element:
-            article_date = date_element.text.strip()
-            try:
-                article_date = datetime.strptime(article_date, "%d-%m-%Y").strftime("%Y-%m-%d")
-            except ValueError:
-                article_date = None
-        else:
-            article_date = None
         
         content = scrape_article_content(link)
         
@@ -47,8 +39,7 @@ def scrape_articles():
                 'title': title,
                 'link': link,
                 'summary': summary,
-                'content': content,
-                'date': article_date
+                'content': content
             })
     
     return articles
@@ -81,27 +72,18 @@ def translate_to_gujarati(query):
     except Exception as e:
         return f"Translation Error: {e}"
 
-def search_articles(query, date, articles):
-    filtered_articles = []
-    
-    for article in articles:
-        title_match = query.lower() in article['title'].lower()
-        summary_match = query.lower() in article['summary'].lower()
-        date_match = not date or (article['date'] and article['date'] == date)
-        
-        if (title_match or summary_match) and date_match:
-            filtered_articles.append(article)
-    
-    return filtered_articles
+def search_articles(query, articles):
+    return [article for article in articles if query.lower() in article['title'].lower() or query.lower() in article['summary'].lower()]
 
 def main():
     st.title("Gujarat Samachar Article Search")
-    st.write("Enter a keyword and select a date to search for relevant articles.")
+    st.write("Enter a keyword and optionally a date to search for relevant articles.")
 
+    # Input for search query
     query = st.text_input("Search for articles", "")
-    selected_date = st.date_input("Select a date (optional)", value=None)
     
-    formatted_date = selected_date.strftime("%Y-%m-%d") if selected_date else None
+    # Input for date
+    date_input = st.date_input("Select a date (optional)", value=None)
     
     if query:
         translated_query = translate_to_gujarati(query)
@@ -109,21 +91,22 @@ def main():
     else:
         translated_query = ""
 
-    articles = scrape_articles()
+    # Scrape articles based on the selected date
+    articles = scrape_articles(date_input)
     if not articles:
         st.warning("No articles found. Please try again later.")
         return
     
     if translated_query:
-        filtered_articles = search_articles(translated_query, formatted_date, articles)
+        filtered_articles = search_articles(translated_query, articles)
         if filtered_articles:
-            st.subheader(f"Search Results for '{query}' on {formatted_date if formatted_date else 'All Dates'}:")
+            st.subheader(f"Search Results for '{query}':")
             for article in filtered_articles:
-                st.markdown(f"### <a href='{article['link']}' target='_blank'>{article['title']}</a> - {article['date']}", unsafe_allow_html=True)
+                st.markdown(f"### <a href='{article['link']}' target='_blank'>{article['title']}</a>", unsafe_allow_html=True)
                 st.write(article['summary'])
                 st.write(article['content'])
         else:
-            st.warning(f"No articles found for '{query}' on {formatted_date}.")
+            st.warning(f"No articles found for '{query}'.")
     else:
         st.info("Please enter a search term.")
 
