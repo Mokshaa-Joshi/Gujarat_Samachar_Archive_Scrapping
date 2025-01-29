@@ -2,3 +2,5 @@ streamlit
 requests
 beautifulsoup4
 deep-translator
+selenium
+webdriver-manager
