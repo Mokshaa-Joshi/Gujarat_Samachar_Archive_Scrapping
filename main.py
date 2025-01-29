@@ -8,55 +8,45 @@ def scrape_articles():
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
     articles = []
-    page_number = 1  # Start from the first page
     
-    while True:
-        url = f"{base_url}archive?page={page_number}"
-        response = requests.get(url, headers=headers)
+    # Try scraping the main page first
+    response = requests.get(base_url, headers=headers)
+    
+    # Check the response status code
+    if response.status_code != 200:
+        st.error(f"Failed to retrieve the website. Status code: {response.status_code}")
+        return []
+    
+    st.write(f"Successfully retrieved the main page")
+    
+    soup = BeautifulSoup(response.content, 'html.parser')
+    
+    # Print out the parsed HTML to verify its structure
+    st.write(f"Parsed HTML (first 500 chars): {soup.prettify()[:500]}")
+    
+    # Now, let's find all articles on this page
+    article_boxes = soup.find_all('div', class_='news-box')
+    if not article_boxes:
+        st.warning("No articles found on this page.")
+        return []
+    
+    for article in article_boxes:
+        title = article.find('a', class_='theme-link news-title').text.strip()
+        link = article.find('a', class_='theme-link')['href']
+        summary = article.find('p').text.strip() if article.find('p') else ""
         
-        # Check the response status code and print out the first 500 characters of the response content
-        if response.status_code != 200:
-            st.error(f"Failed to retrieve the website. Status code: {response.status_code}")
-            break
-        st.write(f"Successfully retrieved page {page_number}")
-        st.write(f"Response content (first 500 chars): {response.text[:500]}")
+        if link.startswith('/'):
+            link = base_url + link
         
-        soup = BeautifulSoup(response.content, 'html.parser')
+        content = scrape_article_content(link)
         
-        # Print out the parsed HTML to verify its structure
-        st.write(f"Parsed HTML (first 500 chars): {soup.prettify()[:500]}")
-        
-        # Find all article containers
-        article_boxes = soup.find_all('div', class_='news-box')
-        if not article_boxes:
-            st.warning("No articles found on this page.")
-            break
-        
-        for article in article_boxes:
-            title = article.find('a', class_='theme-link news-title').text.strip()
-            link = article.find('a', class_='theme-link')['href']
-            summary = article.find('p').text.strip() if article.find('p') else ""
-            
-            if link.startswith('/'):
-                link = base_url + link
-            
-            content = scrape_article_content(link)
-            
-            if title and link and content:
-                articles.append({
-                    'title': title,
-                    'link': link,
-                    'summary': summary,
-                    'content': content
-                })
-        
-        # Check if there is a next page; if not, stop
-        next_page = soup.find('a', class_='next')
-        if not next_page:
-            break
-        
-        # Move to the next page
-        page_number += 1
+        if title and link and content:
+            articles.append({
+                'title': title,
+                'link': link,
+                'summary': summary,
+                'content': content
+            })
     
     return articles
 
