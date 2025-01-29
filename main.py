@@ -1,29 +1,34 @@
-import requests
+import time
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import streamlit as st
 from deep_translator import GoogleTranslator
 import re
 from datetime import datetime
 
-# Function to scrape articles from the archive pages with headers to simulate browser requests
+# Function to scrape articles from the archive pages using Selenium
 def scrape_articles():
-    base_url = "https://www.gujaratsamachar.com/archives"
     articles = []
     
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-
+    # Setup the WebDriver (make sure you have the ChromeDriver installed)
+    options = webdriver.ChromeOptions()
+    options.add_argument('--headless')  # Run in headless mode (no browser window)
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
+    base_url = "https://www.gujaratsamachar.com/archives"
+    
     # Loop through the first few pages of the archive (you can increase this range for more pages)
     for page_num in range(1, 6):  # Scraping first 5 pages (adjust as needed)
         url = f"{base_url}?page={page_num}"
-        response = requests.get(url, headers=headers)
+        driver.get(url)
         
-        if response.status_code != 200:
-            st.error(f"Failed to retrieve page {page_num}. Please check the website or your connection.")
-            continue
+        time.sleep(2)  # Give time for the page to load
         
-        soup = BeautifulSoup(response.content, 'html.parser')
+        # Parse the page source using BeautifulSoup
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
         
         # Extract articles from each page
         for article in soup.find_all('div', class_='news-box'):
@@ -44,16 +49,17 @@ def scrape_articles():
                     'content': content
                 })
     
+    driver.quit()  # Close the WebDriver after scraping
     return articles
 
 # Function to scrape content from individual articles
 def scrape_article_content(link):
     try:
-        article_response = requests.get(link)
-        if article_response.status_code != 200:
+        response = requests.get(link)
+        if response.status_code != 200:
             return "Error loading article content."
         
-        article_soup = BeautifulSoup(article_response.content, 'html.parser')
+        article_soup = BeautifulSoup(response.content, 'html.parser')
         
         content_div = article_soup.find('div')
         if not content_div:
@@ -93,7 +99,7 @@ def main():
     else:
         translated_query = ""
 
-    # Scrape the articles from multiple archive pages
+    # Scrape the articles from multiple archive pages using Selenium
     articles = scrape_articles()
     if not articles:
         st.warning("No articles found. Please try again later.")
