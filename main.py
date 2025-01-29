@@ -7,9 +7,8 @@ from datetime import datetime, timedelta
 
 BASE_URL = "https://www.gujaratsamachar.com/"
 
-def get_articles_for_date(date):
-    """Fetches articles from Gujarat Samachar for a specific date."""
-    formatted_date = date.strftime("%Y-%m-%d")
+def get_articles():
+    """Fetches articles from Gujarat Samachar."""
     response = requests.get(BASE_URL)
     
     if response.status_code != 200:
@@ -35,13 +34,18 @@ def get_articles_for_date(date):
         # Extract article content
         content = scrape_article_content(link)
 
+        # Extract the publication date (assuming it's present in the article)
+        date_tag = article.find('span', class_='date')  # Update with correct class if necessary
+        article_date = date_tag.text.strip() if date_tag else ""
+
+        # Store article data
         if title and link and content:
             articles.append({
                 'title': title,
                 'link': link,
                 'summary': summary,
                 'content': content,
-                'date': formatted_date
+                'date': article_date
             })
 
     return articles
@@ -84,6 +88,11 @@ def search_articles(query, articles):
         if query_lower in article['title'].lower() or query_lower in article['summary'].lower() or query_lower in article['content'].lower()
     ]
 
+def filter_articles_by_date(selected_date, articles):
+    """Filters articles based on the selected date."""
+    selected_date_str = selected_date.strftime("%d-%m-%Y")  # Adjust date format if necessary
+    return [article for article in articles if selected_date_str in article['date']]
+
 def main():
     st.title("Gujarat Samachar Article Search by Date and Keyword")
 
@@ -100,17 +109,24 @@ def main():
         st.write(f"Translated Query: {translated_query}")
 
     # Fetch articles
-    articles = get_articles_for_date(selected_date)
+    articles = get_articles()
 
     if not articles:
-        st.warning("No articles found for the selected date.")
+        st.warning("No articles found.")
+        return
+
+    # Filter articles by date
+    filtered_by_date = filter_articles_by_date(selected_date, articles)
+
+    if not filtered_by_date:
+        st.warning(f"No articles found for the selected date: {selected_date.strftime('%B %d, %Y')}")
         return
 
     # Filter articles by query
     if translated_query:
-        filtered_articles = search_articles(translated_query, articles)
+        filtered_articles = search_articles(translated_query, filtered_by_date)
     else:
-        filtered_articles = articles
+        filtered_articles = filtered_by_date
 
     # Display results
     if filtered_articles:
